@@ -1,0 +1,4 @@
+TODO
+====
+
+- Verify and correct the apparent connection between Arduino A4 and A5 in the schematic. These pins are the I2C SDA and SCL lines and must not be shorted together; confirm the wiring and labels for both Arduino boards.
