@@ -3,7 +3,10 @@
 #include <Wire.h>
 
 #include <Protocol.h>
+#include <StateLogic.h>
 
+using Logic::ControllerInput;
+using Logic::SensorData;
 using Protocol::ControllerCommand;
 using Protocol::SystemState;
 
@@ -21,17 +24,6 @@ constexpr uint16_t GAS_CLEAR_THRESHOLD = 130;
 constexpr uint16_t BLACKOUT_DROP_THRESHOLD = 200;  // Calibrate in hardware.
 constexpr int SERVO_NORMAL_ANGLE = 0;
 constexpr int SERVO_EMERGENCY_ANGLE = 180;
-
-struct SensorData {
-    uint16_t brightness = 0;
-    uint16_t gasPpm = 0;
-    float temperature = 0.0f;
-};
-
-struct ControllerInput {
-    bool activationConfirmed = false;
-    bool manualReset = false;
-};
 
 SensorData sensorData;
 ControllerInput controllerInput;
@@ -52,7 +44,6 @@ void executeStateAction();
 void setServoAngle(int angle);
 void setBuzzer(bool enabled);
 void processCommand(ControllerCommand command);
-bool isBlackoutDetected(uint16_t brightness);
 void writeUint16(uint16_t value);
 
 void setup() {
@@ -116,39 +107,17 @@ void updateSensors() {
 }
 
 void updateState() {
-    if (sensorData.temperature > TEMPERATURE_EMERGENCY_THRESHOLD_C) {
-        currentState = SystemState::TemperatureEmergency;
-        return;
-    }
+    const SystemState nextState = Logic::decideNextState(
+        currentState, sensorData, controllerInput, brightnessBaseline,
+        brightnessBaselineInitialized, TEMPERATURE_EMERGENCY_THRESHOLD_C,
+        GAS_ALERT_THRESHOLD, GAS_CLEAR_THRESHOLD, BLACKOUT_DROP_THRESHOLD);
 
-    if (controllerInput.activationConfirmed &&
-        currentState == SystemState::Standby) {
-        currentState = SystemState::ActiveMonitoring;
+    if (currentState == SystemState::Standby &&
+        nextState == SystemState::ActiveMonitoring) {
         controllerInput.activationConfirmed = false;
     }
 
-    if (currentState == SystemState::Standby) {
-        return;
-    }
-
-    const bool blackoutDetected = isBlackoutDetected(sensorData.brightness);
-    const bool previouslyGasAlerted =
-        currentState == SystemState::GasAlert ||
-        currentState == SystemState::MultiFault;
-    const uint16_t gasThreshold = previouslyGasAlerted
-                                      ? GAS_CLEAR_THRESHOLD
-                                      : GAS_ALERT_THRESHOLD;
-    const bool gasAlert = sensorData.gasPpm > gasThreshold;
-
-    if (gasAlert && blackoutDetected) {
-        currentState = SystemState::MultiFault;
-    } else if (gasAlert) {
-        currentState = SystemState::GasAlert;
-    } else if (blackoutDetected) {
-        currentState = SystemState::BlackoutAlert;
-    } else {
-        currentState = SystemState::ActiveMonitoring;
-    }
+    currentState = nextState;
 }
 
 void handleCommunication() {
