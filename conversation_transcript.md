@@ -232,3 +232,235 @@ I recorded the conversation so far in `conversation_notes.md`.
 ## User
 
 No I want our exact conversation in the .md fike
+
+## User
+
+Alright good enough.
+Now, instead of sending the whole command unnecesarilly, let us just have the arduino 's send out numbers to each other for the exact command they need.
+
+## Assistant
+
+That is a cleaner approach. The slave can send a compact numeric command code instead of a full command structure.
+
+For example:
+
+```cpp
+enum class ControllerCommand : uint8_t {
+    None = 0,
+    Activate = 1,
+    ResetTemperatureEmergency = 2,
+    ToggleDisplay = 3
+};
+```
+
+The communication flow becomes:
+
+1. Master requests pending command.
+2. Slave checks its queue.
+3. Slave sends one command number.
+4. Master interprets that number.
+5. Slave removes the command from its queue only after sending it.
+
+## User
+
+The reason we are sending numbers to each other is to decrease communication overhead
+
+## Assistant
+
+Exactly. Sending compact numeric command codes reduces:
+
+- Number of bytes transferred
+- I²C transmission time
+- Parsing complexity
+- RAM usage
+- Chance of communication errors
+
+The command enum should therefore use fixed-width values such as `uint8_t`, ensuring every command occupies exactly one byte.
+
+## User
+
+Now on the master board output side.
+There are two devices attached to it.
+A servo motor, and a Piezo buzzer.
+We will have to make function to operate those, and these functions would be invoked in the decision function.
+
+## Assistant
+
+Yes. The master should have separate output functions for each device:
+
+```cpp
+void controlServo();
+void controlBuzzer();
+```
+
+The state-decision logic can invoke them according to the current state:
+
+- `TemperatureEmergency`: move the servo to 180°.
+- `MultiFault`: turn the buzzer on continuously.
+- Other states: keep the relevant output inactive or in its normal position.
+
+It may also be useful to define explicit operations:
+
+```cpp
+void setServoAngle(int angle);
+void setBuzzer(bool enabled);
+```
+
+## User
+
+Alright, now thinking of what is going on in the slave arduino.
+It has a lcd screen attachement and an ir Sensor right.
+Also, this is schematic v2.
+Upadte the plan.md file with accordance to our current discussions.
+Commit with the docs: commit message
+
+## Assistant
+
+I’ll save this image as `schematic_v2.png`, update `plan.md` with the current master/slave design and numeric-command protocol, then commit and push using a `docs:` message.
+
+## User
+
+Alright, is th emaster arduino decently defined?
+
+## Assistant
+
+Yes—the master Arduino is decently defined at the architectural level.
+
+It currently has:
+
+- `SensorData` for brightness, gas ppm, and temperature.
+- `ControllerInput` for commands from the slave.
+- `SystemState` enum for state management.
+- Sensor functions: `getTemperature()`, `getLux()`, `getGasPpm()`.
+- `updateSensors()`, `updateState()`, and communication handling.
+- Servo and buzzer output control.
+- A latched `TemperatureEmergency` path.
+- Numeric command codes to reduce I²C overhead.
+
+Before writing code, we still need to specify:
+
+- Exact Arduino pin assignments.
+- Sensor conversion/calibration formulas.
+- Complete state transition conditions.
+- Servo and buzzer behavior in every state.
+- I²C request timing and command encoding.
+- Whether sensor readings use `int`, `float`, or another type.
+
+## User
+
+Okay, we will do that exactly when we code.
+For now.
+We focus on teh slave arduino.
+What kind of communication would we need between the IR and remote, ie, how would teh ir sensor ditinguish between ifferent commands and report accurately, is there a library for this?
+
+## Assistant
+
+Yes. For an Arduino IR receiver and remote, the usual approach is to use an IR decoding library, such as `IRremote`.
+
+The remote does not send plain command names. Each button sends a modulated infrared signal containing a numeric code. The IR receiver detects that signal, and the library decodes it into information such as protocol, address, command code, and raw data.
+
+## User
+
+Alright, sure, then we just use this library then.
+Also, how would lcd screen communication work?
+
+## Assistant
+
+The LCD will communicate over I²C through its backpack module. The slave Arduino can use `Wire.h` for I²C communication and `LiquidCrystal_I2C.h` for LCD control.
+
+The LCD’s I²C address must be identified first, commonly `0x27` or `0x3F`. Since the LCD shares the bus with the two Arduinos, all devices must have unique addresses. The slave will logically own and update the LCD, while the master communicates with the slave using its separate address.
+
+## User
+
+Alright cool.
+Now, we need a FIFO queue and a messaging protocol with the master.
+We also have to detail the messaging protocol from teh master
+
+## Assistant
+
+A FIFO queue is appropriate on the slave because IR commands must be preserved in the order they are received.
+
+The master is the I²C controller and the slave is the I²C target. The master sends a one-byte request code, and the slave returns one command byte or `None` if its queue is empty.
+
+## User
+
+Every 300 ms should do right?
+
+## Assistant
+
+Yes, polling every 300 ms is reasonable for this project. Use a non-blocking `millis()` timer rather than delays.
+
+## User
+
+Also, the slave needs internal functions in order to change the display information every time a button is pressed, while it is in state 1.
+Also would need logic to prevent it from responding if there is a emergency state.
+
+## Assistant
+
+The slave needs local display-management logic and must know the master’s current state before deciding whether a button is valid. It should allow display toggling only in `ActiveMonitoring`, ignore normal commands during emergency states, and continue accepting `ResetTemperatureEmergency`.
+
+## User
+
+So the master should actually send the state over to teh slave during the communication polling itself.
+
+## Assistant
+
+Yes. During each communication cycle, the master should send its current state to the slave so the slave can enforce the correct command and display behavior.
+
+The transaction can be:
+
+```text
+Master → Slave: [request code, current state]
+Slave  → Master: [next command]
+```
+
+## User
+
+Alright add this to the docs
+
+## Assistant
+
+Updated `plan.md` with the FIFO queue, numeric messaging protocol, 300 ms polling, state synchronization, and slave display/emergency logic.
+
+## User
+
+Alright anything else, have we missed something fundamental on a orchestration level?
+
+## Assistant
+
+The biggest missing orchestration detail is that the slave needs sensor readings to display them. The master must send telemetry along with the state:
+
+```text
+Master → Slave: [request, state, brightness, gasPpm, temperature]
+Slave  → Master: [next command]
+```
+
+Other important items are state ownership and priority, gas hysteresis, blackout baseline detection, IR debouncing, FIFO overflow, invalid commands, I²C failures, and the slave’s dual I²C role.
+
+## User
+
+Alright, Define them then, and add them to the docs.
+
+## Assistant
+
+I’ll formalize these orchestration decisions in `plan.md`, including telemetry transfer, state authority and priority, thresholds, queue behavior, error handling, and the shared-I²C role constraints.
+
+## User
+
+Alright, perform a commit.
+And start building on the basis of the spec.
+Also, push whatever chat we have right now to the conversation transcript
+
+## Assistant
+
+I’ll first inspect the repository state and current planning documents, then I’ll update the transcript, commit the documentation changes, and add the initial code scaffolding based on the agreed specification.
+
+I’m going to add an initial implementation scaffold: shared protocol definitions, a master sketch, and a slave sketch. I’ll keep hardware-specific pin assignments and IR button codes clearly configurable so they can be finalized during coding.
+
+## Assistant
+
+The initial scaffolding is in place. I’ll now append the newer discussion to the transcript, review the diff for obvious issues, and then commit and push the documentation plus code together.
+
+## Assistant
+
+I found one orchestration issue in the scaffold: `ToggleDisplay` is a slave-local action, so the slave should change the LCD immediately instead of queueing that command for the master. I’ll correct that and tighten the I²C packet handling before committing.
