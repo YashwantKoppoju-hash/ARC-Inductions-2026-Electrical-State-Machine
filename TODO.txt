@@ -2,4 +2,5 @@ TODO
 ====
 
 - Verify and correct the apparent connection between Arduino A4 and A5 in the schematic. These pins are the I2C SDA and SCL lines and must not be shorted together; confirm the wiring and labels for both Arduino boards.
-- Fix the LCD wiring so that it is not incorrectly placed on the same I2C bus as the master-slave Arduino connection; verify the intended bus arrangement and wiring.
+- Verify the shared I2C bus arrangement for the LCD and master-slave communication. Confirm that all devices have unique I2C addresses and that the slave exclusively manages the LCD through the communication protocol, even though the master can electrically access the shared bus.
+- Future: Electrically isolate the LCD screen from the master-slave I2C bus if the final design requires physical bus separation.
