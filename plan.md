@@ -12,6 +12,26 @@ The master will measure the physical quantities required by the project:
 - Gas concentration in ppm
 - Temperature
 
+### Confirmed Hardware Pin Mapping
+
+Master Arduino:
+
+- `A0` → photoresistor light detector; measure the voltage across the 10 kΩ series resistor.
+- `A1` → gas sensor; measure the voltage across the 1 kΩ pulldown resistor.
+- `A2` → temperature sensor output.
+- `A4` → I2C SDA.
+- `A5` → I2C SCL.
+- `D6` → servo motor signal.
+- `D7` → piezo buzzer.
+
+Slave Arduino:
+
+- `A4` → I2C SDA.
+- `A5` → I2C SCL.
+- `D2` → IR sensor output.
+
+The I2C lines use 4.7 kΩ pullup resistors to 5V. Both boards use 5V power.
+
 These readings will be represented using a `SensorData` structure rather than separate global variables:
 
 ```cpp

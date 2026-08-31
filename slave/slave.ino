@@ -3,7 +3,7 @@
 #include <LiquidCrystal_I2C.h>
 #include <Wire.h>
 
-#include "../shared/Protocol.h"
+#include <Protocol.h>
 
 using Protocol::ControllerCommand;
 using Protocol::SystemState;
@@ -36,6 +36,8 @@ LiquidCrystal_I2C lcd(LCD_ADDRESS, LCD_COLUMNS, LCD_ROWS);
 volatile SystemState mirroredState = SystemState::Standby;
 volatile MasterTelemetry receivedTelemetry;
 volatile bool packetReceived = false;
+SystemState latestState = SystemState::Standby;
+MasterTelemetry latestTelemetry;
 
 ControllerCommand commandQueue[COMMAND_QUEUE_CAPACITY];
 uint8_t queueHead = 0;
@@ -144,7 +146,7 @@ void processIrInput() {
 
     if (!isRepeat && command != ControllerCommand::None &&
         now - lastIrCommandTime >= IR_DEBOUNCE_MS &&
-        commandAllowedInState(command, mirroredState)) {
+        commandAllowedInState(command, latestState)) {
         // Display toggling is entirely local to the slave and should not
         // consume an I2C queue entry intended for the master.
         if (command == ControllerCommand::ToggleDisplay) {
@@ -164,44 +166,56 @@ void updateLocalStateAndDisplay() {
     }
 
     noInterrupts();
+    latestState = mirroredState;
+    latestTelemetry.brightness = receivedTelemetry.brightness;
+    latestTelemetry.gasPpm = receivedTelemetry.gasPpm;
+    latestTelemetry.temperatureTenths = receivedTelemetry.temperatureTenths;
     packetReceived = false;
     interrupts();
 
-    if (mirroredState == SystemState::TemperatureEmergency) {
+    if (latestState == SystemState::TemperatureEmergency) {
         purgeDisallowedCommands();
     }
 
-    updateDisplay();
+    const bool stateChanged = latestState != lastDisplayedState;
+    const bool modeChanged = displayMode != lastDisplayedMode;
+    const bool telemetryChanged =
+        latestTelemetry.brightness != lastDisplayedBrightness ||
+        latestTelemetry.gasPpm != lastDisplayedGasPpm;
+
+    if (stateChanged || modeChanged || telemetryChanged) {
+        updateDisplay();
+    }
 }
 
 void updateDisplay() {
-    if (mirroredState == SystemState::ActiveMonitoring) {
+    if (latestState == SystemState::ActiveMonitoring) {
         if (displayMode == DisplayMode::Brightness) {
             lcd.clear();
             lcd.setCursor(0, 0);
             lcd.print("Brightness:");
             lcd.setCursor(0, 1);
-            lcd.print(receivedTelemetry.brightness);
+            lcd.print(latestTelemetry.brightness);
         } else {
             lcd.clear();
             lcd.setCursor(0, 0);
             lcd.print("Gas ppm:");
             lcd.setCursor(0, 1);
-            lcd.print(receivedTelemetry.gasPpm);
+            lcd.print(latestTelemetry.gasPpm);
         }
     } else {
         lcd.clear();
-        printStateMessage(mirroredState);
+        printStateMessage(latestState);
     }
 
     lastDisplayedState = mirroredState;
     lastDisplayedMode = displayMode;
-    lastDisplayedBrightness = receivedTelemetry.brightness;
-    lastDisplayedGasPpm = receivedTelemetry.gasPpm;
+    lastDisplayedBrightness = latestTelemetry.brightness;
+    lastDisplayedGasPpm = latestTelemetry.gasPpm;
 }
 
 void toggleDisplayMode() {
-    if (mirroredState != SystemState::ActiveMonitoring) {
+    if (latestState != SystemState::ActiveMonitoring) {
         return;
     }
 

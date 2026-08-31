@@ -2,7 +2,7 @@
 #include <Servo.h>
 #include <Wire.h>
 
-#include "../shared/Protocol.h"
+#include <Protocol.h>
 
 using Protocol::ControllerCommand;
 using Protocol::SystemState;
@@ -12,7 +12,7 @@ constexpr uint8_t PHOTORESISTOR_PIN = A0;
 constexpr uint8_t GAS_SENSOR_PIN = A1;
 constexpr uint8_t TEMPERATURE_PIN = A2;
 constexpr uint8_t BUZZER_PIN = 7;
-constexpr uint8_t SERVO_PIN = 8;
+constexpr uint8_t SERVO_PIN = 6;
 
 constexpr unsigned long COMMAND_POLL_INTERVAL_MS = 300;
 constexpr float TEMPERATURE_EMERGENCY_THRESHOLD_C = 45.0f;
@@ -173,7 +173,8 @@ void handleCommunication() {
         return;
     }
 
-    const uint8_t bytesReceived = Wire.requestFrom(Protocol::SlaveAddress, 1);
+    const uint8_t bytesReceived = Wire.requestFrom(
+        Protocol::SlaveAddress, static_cast<uint8_t>(1));
     if (bytesReceived != 1 || !Wire.available()) {
         return;
     }
